@@ -1,0 +1,356 @@
+<div class="app-shell">
+  <!-- CSS-only tab state (no TypeScript needed) -->
+  <input class="tab-radio" type="radio" name="gm-tab" id="tab-dashboard" #tabDashboard />
+  <input class="tab-radio" type="radio" name="gm-tab" id="tab-map" #tabMap checked />
+  <!-- <input class="tab-radio" type="radio" name="gm-tab" id="tab-results" #tabResults /> -->
+
+  <!-- ============================ Sidebar ============================ -->
+  <aside class="sidebar">
+    <a class="brand" href="#" (click)="$event.preventDefault()">
+      <span class="brand-mark">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      </span>
+      <span class="brand-text"><strong>GeoMind AI</strong><small>AI-Powered GIS Query Assistant</small></span>
+    </a>
+
+    <nav class="side-nav">
+      <label class="nav-item nav-dashboard" for="tab-dashboard">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+        Dashboard
+      </label>
+      <label class="nav-item nav-map" for="tab-map">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+        Map Explorer
+      </label>
+      <!-- <label class="nav-item nav-results" for="tab-results">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        Results
+      </label> -->
+    </nav>
+
+    <section class="favorites" *ngIf="history().length > 0">
+      <div class="fav-head">
+        <h2>Recent</h2>
+        <button type="button" class="link-btn" (click)="clearHistory()">Clear</button>
+      </div>
+      <button type="button" *ngFor="let item of history().slice(0, 6)" (click)="rerun(item)">
+        <span class="rerun-icon">↺</span>
+        <span>{{ item.query }}</span>
+      </button>
+    </section>
+
+    <div class="sidebar-bottom">
+      <div class="status" [class.offline]="!apiOnline()">
+        <span></span>{{ apiOnline() ? 'System Online' : 'API Offline' }}
+      </div>
+      <footer><strong>GeoMind AI v1.0</strong><span>TechFest – Proof of Concept</span></footer>
+    </div>
+  </aside>
+
+  <!-- ============================ Main ============================ -->
+  <main class="main-content">
+
+    <!-- ===================== Dashboard ===================== -->
+    <section class="view dashboard-view">
+      <div>
+        <h1>Welcome to GeoMind Dashboard</h1>
+        <p class="muted">AI-powered geospatial analysis and PostGIS spatial intelligence suite.</p>
+      </div>
+
+      <div class="dash-grid">
+        <div class="card dash-card">
+          <h3>Database Status (PostGIS)</h3>
+          <p class="status-badge">{{ apiOnline() ? 'Connected' : 'Offline' }}</p>
+        </div>
+        <div class="card dash-card">
+          <h3>LLM Engine (Ollama)</h3>
+          <p class="status-badge">{{ apiOnline() ? 'Ready' : 'Offline' }}</p>
+        </div>
+        <div class="card dash-card">
+          <h3>Configured Layers</h3>
+          <p class="stat-big">3 Layers Active</p>
+        </div>
+      </div>
+            <div class="stats-head">
+                <h2>Query Statistics</h2>
+                <button type="button" class="text-btn" *ngIf="kpis().total > 0" (click)="clearStats()">Clear stats</button>
+            </div>
+
+        <div class="kpi-grid">
+            <div class="card kpi"><span class="kpi-label">Queries run</span><strong>{{ kpis().total }}</strong><small>last {{ stats().length }} kept</small></div>
+            <div class="card kpi"><span class="kpi-label">Avg response</span><strong>{{ fmt(kpis().avgMs) }}</strong><small>fastest {{ fmt(kpis().fastest) }} · slowest {{ fmt(kpis().slowest) }}</small></div>
+            <div class="card kpi"><span class="kpi-label">Features returned</span><strong>{{ kpis().totalFeatures }}</strong><small>avg {{ kpis().avgFeatures }} per search</small></div>
+            <div class="card kpi"><span class="kpi-label">Success rate</span><strong>{{ kpis().successRate }}%</strong><small>searches with results</small></div>
+        </div>
+
+        <div class="chart-grid">
+            <div class="card chart-card">
+            <div class="chart-head">
+                <h3>Response time · last 10 queries</h3>
+                <span class="muted" *ngIf="recent().length">avg {{ fmt(kpis().avgMs) }}</span>
+            </div>
+            <ng-container *ngIf="recent().length; else noData">
+                <div class="plot">
+                <div class="avg-line" [style.bottom.%]="pct(kpis().avgMs, maxMs())"><span>avg</span></div>
+                <div class="bar-col" *ngFor="let s of recent()" [title]="s.query">
+                    <div class="bar" [style.height.%]="pct(s.ms, maxMs())">
+                    <span class="bar-val">{{ fmt(s.ms) }}</span>
+                    </div>
+                </div>
+                </div>
+                <div class="plot-labels"><span *ngFor="let s of recent()" [title]="s.query">{{ s.query }}</span></div>
+            </ng-container>
+            </div>
+
+            <div class="card chart-card">
+            <div class="chart-head">
+                <h3>Features returned · last 10 queries</h3>
+                <span class="muted" *ngIf="recent().length">avg {{ kpis().avgFeatures }}</span>
+            </div>
+            <ng-container *ngIf="recent().length; else noData">
+                <div class="plot">
+                <div class="bar-col" *ngFor="let s of recent()" [title]="s.query">
+                    <div class="bar green" [style.height.%]="pct(s.total ?? 0, maxFeat())">
+                    <span class="bar-val">{{ s.total ?? 0 }}</span>
+                    </div>
+                </div>
+                </div>
+                <div class="plot-labels"><span *ngFor="let s of recent()" [title]="s.query">{{ s.query }}</span></div>
+            </ng-container>
+            </div>
+        </div>
+
+        <!-- outcomes + quick start share one row -->
+        <div class="bottom-grid">
+            <div class="card chart-card">
+            <div class="chart-head"><h3>Query outcomes</h3></div>
+            <ng-container *ngIf="kpis().total > 0; else noData">
+                <div class="split">
+                <span *ngFor="let b of breakdown()" [style.width.%]="b.pct" [style.background]="b.color" [title]="b.label + ': ' + b.n"></span>
+                </div>
+                <div class="split-legend">
+                <span *ngFor="let b of breakdown()"><i [style.background]="b.color"></i>{{ b.label }} · {{ b.n }}</span>
+                </div>
+            </ng-container>
+            </div>
+
+            <div class="card quick-actions-card">
+            <h3>Quick Start Query Suggestions</h3>
+            <div class="chip-list">
+                <button type="button" *ngFor="let fav of favorites" (click)="query = fav; tabMap.checked = true; analyzeQuery()">{{ fav }}</button>
+            </div>
+            </div>
+        </div>
+
+        <ng-template #noData>
+            <div class="chart-empty">Run a search in Map Explorer to see statistics here.</div>
+        </ng-template>
+    </section>
+
+    <!-- ===================== Map Explorer ===================== -->
+    <section class="view map-view">
+
+      <div class="map-column">
+        <div class="map-card" [class.selecting]="selectingLocation">
+          <div id="geomind-map"></div>
+
+          <div class="map-tools">
+            <button type="button" title="Zoom in" (click)="zoomIn()">+</button>
+            <button type="button" title="Zoom out" (click)="zoomOut()">−</button>
+            <button type="button" title="Fit all results" *ngIf="hasResults" (click)="zoomToAllResults()">⊡</button>
+          </div>
+
+     
+
+            <!-- <div class="map-label">Kerala Spatial Dataset (EPSG:4326)</div> -->
+            <div class="layer-panel">
+                <button type="button" class="layer-toggle" title="Layers" (click)="layersOpen = !layersOpen">
+                    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+                </button>
+                <div class="layer-list" *ngIf="layersOpen">
+                    <div class="layer-heading">Map Layers</div>
+                    <label *ngFor="let l of layerItems">
+                    <input type="checkbox" [checked]="layerVisibility[l.key]" (change)="toggleGeoServerLayer(l.key)" />
+                    {{ l.label }}
+                    <small class="zoom-hint" *ngIf="layerVisibility[l.key] && currentZoom() < l.minZoom">zoom in</small>
+                    </label>
+                    <div class="poi-cats" *ngIf="hasOverlay">
+                        <div class="layer-heading sub"><span>Search Overlay</span></div>
+                        <label><input type="checkbox" [checked]="showBuffer" (change)="toggleBuffer()" /> Buffer area</label>
+                        <label><input type="checkbox" [checked]="showRefs" (change)="toggleRefs()" /> Reference features</label>
+                    </div>
+                    <div class="poi-cats" *ngIf="layerVisibility['poi']">
+                        <div class="layer-heading sub">
+                            <button type="button" class="cat-collapse" (click)="poiCatsOpen = !poiCatsOpen">
+                            {{ poiCatsOpen ? '▾' : '▸' }} Points Of Interest
+                            </button>
+                            <span class="cat-actions" *ngIf="poiCatsOpen">
+                            <button type="button" (click)="setAllPoi(true)">All</button>
+                            <button type="button" (click)="setAllPoi(false)">None</button>
+                            </span>
+                        </div>
+
+                        <ng-container *ngIf="poiCatsOpen">
+                            <label *ngFor="let c of poiCategories">
+                            <input type="checkbox" [checked]="poiCategoryVisible[c.key]" (change)="togglePoiCategory(c.key)" />
+                            <span class="cat-icon">{{ c.icon }}</span>{{ c.label }}
+                            </label>
+                        </ng-container>
+                    </div>
+                    
+                </div>
+            </div>
+        </div>
+
+        <div class="stats" *ngIf="hasResults">
+          <article>
+            <span class="stat-icon green">
+              <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+            </span>
+            <div><strong>{{ totalFeatures() }}</strong><small>Features</small></div>
+          </article>
+          <article>
+            <span class="stat-icon blue">
+              <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+            </span>
+            <div><strong>{{ analysisRadius() }}</strong><small>Radius</small></div>
+          </article>
+          <article>
+            <span class="stat-icon red">
+              <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            </span>
+            <div><strong>{{ queryTime() }}</strong><small>Time</small></div>
+          </article>
+        </div>
+      </div>
+
+      <div class="side-column">
+
+        <!-- AI GIS Assistant -->
+        <div class="card query-card">
+          <div class="card-title">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 3l1.8 4.7L17.5 9.5l-4.7 1.8L11 16l-1.8-4.7L4.5 9.5l4.7-1.8z"/><path d="M19 14l.8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8z"/></svg>
+            <h2>AI GIS Assistant</h2>
+          </div>
+          <p class="muted">Ask a question about your geographic data in natural language.</p>
+
+          <textarea [(ngModel)]="query" rows="3"
+            (keydown.enter)="$event.preventDefault(); analyzeQuery()"
+            [placeholder]="selectedPoint ? 'What are you looking for here? e.g. schools, hospitals within 2 km' : 'Restaurants near Lisie Hospital'"></textarea>
+
+            <div class="loc-chip" *ngIf="selectedPoint">
+                <span class="loc-coords">📍 {{ selectedPoint.lat | number:'1.4-4' }}, {{ selectedPoint.lon | number:'1.4-4' }}</span>
+                <select [(ngModel)]="pointRadius" title="Search radius">
+                    <option *ngFor="let r of radii" [ngValue]="r.m">{{ r.label }}</option>
+                </select>
+                <button type="button" title="Remove location" (click)="clearPoint()">&times;</button>
+                </div>
+
+                <div class="quick-cats" *ngIf="selectedPoint">
+                <button type="button" *ngFor="let c of quickCats" [disabled]="loading()" (click)="searchHere(c)">{{ c.icon }} {{ c.label }}</button>
+            </div>
+
+          <div class="query-actions">
+            <button class="pill" type="button" [class.chosen]="selectingLocation" (click)="toggleSelectOnMap()">
+              <svg class="ic ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>
+              {{ selectingLocation ? 'Click map to select' : (selectedPoint ? 'Change location' : 'Select on map') }}
+            </button>
+            <button class="pill clear" type="button" [disabled]="!query && !hasResults && !errorMessage && !clarificationMessage && !emptyMessage && !selectingLocation"
+              (click)="clearAll()">
+              <svg class="ic ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              Clear
+            </button>
+          </div>
+
+          <button class="analyze-button" [class.loading]="loading()" type="button" (click)="analyzeQuery()" [disabled]="!query.trim() || loading()">
+            <span class="spinner" *ngIf="loading()"></span>
+            <svg class="ic" *ngIf="!loading()" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            {{ loading() ? 'Searching...' : 'Search' }}
+          </button>
+
+          <!-- Clarification prompt from the AI -->
+          <div class="alert info" *ngIf="clarificationMessage">
+            <strong>Need a quick detail:</strong>
+            <p>{{ clarificationMessage }}</p>
+          </div>
+
+          <div class="feedback-empty" *ngIf="emptyMessage && !loading()" role="status">
+            <span class="feedback-icon">⌕</span>
+            <div>
+              <strong>No features found</strong>
+              <span>{{ emptyMessage }}</span>
+            </div>
+          </div>
+
+          <p class="alert error" *ngIf="errorMessage">{{ errorMessage }}</p>
+        </div>
+
+        <!-- Results (with the feature table inside) -->
+        <div class="card results-card" *ngIf="hasResults && showResultsCard">
+            <div class="results-head">
+                <div class="card-title">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                <h2>Results</h2>
+                <span class="count-badge">{{ totalFeatures() }}</span>
+                </div>
+                <button type="button" class="results-close" title="Close results" aria-label="Close results" (click)="closeResultsCard()">&times;</button>
+            </div>
+
+            <p class="results-notice" *ngIf="truncationNotice">{{ truncationNotice }}</p>
+            <p class="results-notice info" *ngIf="overlayNote">{{ overlayNote }}</p>
+            <div class="table-wrap">
+                <table class="data-table">
+                <!-- <thead>
+                    <tr><th class="col-index">#</th><th>Feature</th></tr>
+                </thead> -->
+                <tbody>
+                    <tr *ngFor="let f of tableFeatures; let i = index" (click)="zoomToFeature(f)">
+                    <td class="col-index">{{ i + 1 }}</td>
+                    <td>
+                        <div class="name-cell">
+                        <span class="type-dot" [style.background]="styleFor(f).color"></span>
+                        <span class="cell-name">{{ f.properties?.name || 'Unnamed Feature' }}</span>
+                        </div>
+                        <small class="cell-sub">{{ styleFor(f).icon }} {{ styleFor(f).label }}</small>
+                    </td>
+                    </tr>
+                </tbody>
+                </table>
+            </div>
+
+            
+            </div>
+      </div>
+    </section>
+
+    <!-- ===================== Results (full table) ===================== -->
+    <section class="view results-view">
+      <div class="card results-page">
+        <div class="results-head">
+          <div class="card-title">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+            <h2>Query Results</h2>
+          </div>
+          <span class="exec" *ngIf="hasResults">{{ totalFeatures() }} features · {{ queryTime() }}</span>
+        </div>
+
+        <div class="table-wrap full" *ngIf="hasResults">
+          <table class="data-table">
+            <thead>
+              <tr><th class="col-index">#</th><th>Name</th><th>Category / Type</th></tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let f of tableFeatures; let i = index" (click)="tabMap.checked = true; zoomToFeature(f)">
+                <td class="col-index">{{ i + 1 }}</td>
+                <td class="cell-name">{{ f.properties?.name || 'Unnamed Feature' }}</td>
+                <td>{{ f.properties?.fclass || f.properties?.type || 'Standard' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="results-empty big" *ngIf="!hasResults">No results yet. Run a query from Map Explorer.</div>
+      </div>
+    </section>
+
+  </main>
+</div>

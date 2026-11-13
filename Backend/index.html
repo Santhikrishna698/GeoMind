@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GeoMind GIS Assistant</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; display: flex; height: 100vh; color: #1f2933; }
+  aside { width: 380px; min-width: 320px; padding: 18px; overflow-y: auto; border-right: 1px solid #d9dee3; background: #f7f9fb; }
+  #map { flex: 1; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: #5f6c7b; font-size: 13px; margin-bottom: 14px; }
+  textarea { width: 100%; height: 84px; padding: 10px; font: inherit; border: 1px solid #b8c1cc; border-radius: 8px; resize: vertical; }
+  button.primary { width: 100%; margin-top: 8px; padding: 10px; font: inherit; font-weight: 600; color: #fff; background: #1d6fd8; border: 0; border-radius: 8px; cursor: pointer; }
+  button.primary:disabled { background: #8fb4e6; cursor: wait; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+  .chip { font-size: 12px; padding: 5px 9px; border: 1px solid #c3ccd6; border-radius: 14px; background: #fff; cursor: pointer; }
+  .chip:hover { background: #eaf2fd; border-color: #1d6fd8; }
+  #status { margin: 10px 0; padding: 10px; border-radius: 8px; font-size: 14px; background: #e8eef5; }
+  #status.warn { background: #fff4d6; }
+  #status.err { background: #fde4e4; }
+  #status.ok { background: #e1f5e6; }
+  details { margin-top: 10px; font-size: 13px; }
+  summary { cursor: pointer; font-weight: 600; }
+  pre { background: #1f2933; color: #e6edf3; padding: 10px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; font-size: 12px; }
+  .popup-table td { padding: 2px 8px 2px 0; font-size: 12px; vertical-align: top; }
+  .popup-table td:first-child { font-weight: 600; color: #52606d; }
+  @media (max-width: 800px) { body { flex-direction: column-reverse; } aside { width: 100%; height: 45vh; } #map { height: 55vh; } }
+</style>
+</head>
+<body>
+<aside>
+  <h1>GeoMind GIS Assistant</h1>
+  <div class="sub">Ask about buildings, points of interest and roads in plain English.</div>
+
+  <textarea id="question" placeholder="e.g. Buildings within 300 meters of a hospital"></textarea>
+  <button class="primary" id="askBtn">Ask</button>
+
+  <div class="chips" id="chips"></div>
+
+  <div id="status">Ready.</div>
+
+  <details>
+    <summary>How the AI understood it</summary>
+    <pre id="interpreted">-</pre>
+  </details>
+  <details>
+    <summary>SQL that was run</summary>
+    <pre id="sql">-</pre>
+  </details>
+</aside>
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const examples = [
+  "Show all hospitals",
+  "Buildings within 300 meters of a hospital",
+  "Schools not within 1 km of a primary road",
+  "Roads whose name contains Bypass",
+  "Banks near a pharmacy"
+];
+
+const map = L.map("map").setView([10.5, 76.3], 8);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19,
+  attribution: "&copy; OpenStreetMap contributors"
+}).addTo(map);
+
+const $ = (id) => document.getElementById(id);
+let resultLayer = null;
+
+function setStatus(text, kind) {
+  const el = $("status");
+  el.textContent = text;
+  el.className = kind || "";
+}
+
+function clearLayer() {
+  if (resultLayer) { map.removeLayer(resultLayer); resultLayer = null; }
+}
+
+function popupFor(properties) {
+  const table = document.createElement("table");
+  table.className = "popup-table";
+  Object.entries(properties || {}).forEach(([key, value]) => {
+    if (value === null || value === "") return;
+    const row = table.insertRow();
+    row.insertCell().textContent = key;
+    row.insertCell().textContent = String(value);   // textContent: no HTML injection from data
+  });
+  return table;
+}
+
+function draw(geojson) {
+  clearLayer();
+  resultLayer = L.geoJSON(geojson, {
+    pointToLayer: (f, latlng) => L.circleMarker(latlng, { radius: 6, color: "#b42318", weight: 1, fillColor: "#ef4444", fillOpacity: 0.85 }),
+    style: (f) => f.geometry.type.includes("Line")
+      ? { color: "#1d6fd8", weight: 3 }
+      : { color: "#7a3e9d", weight: 1, fillColor: "#a855f7", fillOpacity: 0.45 },
+    onEachFeature: (f, layer) => layer.bindPopup(popupFor(f.properties))
+  }).addTo(map);
+  const bounds = resultLayer.getBounds();
+  if (bounds.isValid()) map.fitBounds(bounds, { padding: [30, 30], maxZoom: 17 });
+}
+
+async function ask() {
+  const text = $("question").value.trim();
+  if (!text) return;
+  $("askBtn").disabled = true;
+  setStatus("Thinking...");
+  try {
+    const res = await fetch("/api/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || res.statusText);
+
+    $("interpreted").textContent = JSON.stringify(data.interpreted, null, 2);
+    $("sql").textContent = data.sql || "-";
+
+    if (data.clarification) {
+      clearLayer();
+      setStatus(data.clarification, "warn");
+      return;
+    }
+    draw(data.geojson);
+    let msg = `${data.total} feature(s) found`;
+    if (data.returned < data.total) msg += `, showing the first ${data.returned}`;
+    setStatus(msg, data.total ? "ok" : "warn");
+  } catch (err) {
+    setStatus(err.message, "err");
+  } finally {
+    $("askBtn").disabled = false;
+  }
+}
+
+examples.forEach((text) => {
+  const chip = document.createElement("span");
+  chip.className = "chip";
+  chip.textContent = text;
+  chip.onclick = () => { $("question").value = text; ask(); };
+  $("chips").appendChild(chip);
+});
+
+$("askBtn").onclick = ask;
+$("question").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+@import 'ol/ol.css';
+
+.ol-popup {
+  position: relative;
+  min-width: 170px;
+  max-width: 260px;
+  padding: 12px 14px;
+  border: 1px solid #e6eaf2;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 6px 20px rgba(16, 24, 40, 0.25);
+  font: 12px/1.5 Inter, system-ui, sans-serif;
+  color: #111827;
+}
+.ol-popup::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -8px;
+  border: 8px solid transparent;
+  border-top-color: #fff;
+}
+.ol-popup-close {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+html, body {
+  margin: 0;
+  height: 100%;
+}
